@@ -1,0 +1,433 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>课程表</title>
+    <style>
+        /* [所有 CSS 样式表与 V6 保持一致，未更改] */
+        /* --- 基础和布局 --- */
+        :root {
+            --color-bg: #f8f9fa; --color-border: #dee2e6; --color-text: #212529;
+            --color-text-light: #495057; --color-accent: #4295d6; --color-danger: #e03131; 
+            --color-shadow: rgba(0, 0, 0, 0.05); --border-radius: 12px; --border-radius-small: 8px;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans", sans-serif;
+            background-color: var(--color-bg); color: var(--color-text); margin: 0; padding: 20px; line-height: 1.5;
+            background-size: cover; background-position: center; background-attachment: fixed; transition: background-color 0.3s ease;
+        }
+        .schedule-wrapper {
+            max-width: 1400px; margin: 0 auto; border-radius: var(--border-radius);
+            box-shadow: 0 4px 20px var(--color-shadow); overflow: hidden; border: 1px solid var(--color-border);
+            background-color: rgba(255, 255, 255, 1); transition: background-color 0.3s ease;
+        }
+        /* --- 顶部控制栏 --- */
+        .schedule-controls {
+            display: flex; justify-content: flex-start; align-items: center; flex-wrap: wrap; 
+            padding: 15px 20px; background-color: rgba(255, 255, 255, 0.7); 
+            border-bottom: 1px solid var(--color-border); gap: 15px;
+        }
+        #countdown-timer { font-size: 1.1rem; font-weight: 500; color: var(--color-accent); flex-basis: 100%; text-align: center; }
+        .week-setter { display: flex; align-items: center; gap: 8px; }
+        .week-setter label { font-weight: 500; font-size: 1rem; }
+        #current-week-input { width: 60px; padding: 8px; border: 1px solid var(--color-border); border-radius: var(--border-radius-small); font-size: 1rem; text-align: center; }
+        .data-actions { display: flex; gap: 10px; }
+        .main-actions { margin-left: auto; display: flex; gap: 10px; }
+        #add-course-btn { background-color: var(--color-accent); color: white; }
+        #add-course-btn:hover { background-color: #367ab3; }
+        #bg-settings-btn { background-color: #f1f3f5; color: var(--color-text-light); padding: 10px 15px; }
+        #bg-settings-btn:hover { background-color: #e9ecef; }
+        /* --- 课程表表格 --- */
+        .schedule-table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+        .schedule-table th, .schedule-table td { border: 1px solid var(--color-border); padding: 8px; height: 60px; text-align: center; vertical-align: top; font-size: 0.85rem; position: relative; }
+        .schedule-table thead th { background-color: transparent; font-weight: 600; padding: 12px 8px; font-size: 0.9rem; }
+        .schedule-table tbody th { background-color: transparent; width: 100px; font-weight: 600; font-size: 0.8rem; line-height: 1.3; padding-top: 12px; }
+        .schedule-table tbody th div { font-weight: 400; font-size: 0.75rem; color: var(--color-text-light); }
+        .schedule-table tbody td { background-color: transparent; padding: 6px; }
+        /* --- 课程卡片 --- */
+        .course-block {
+            padding: 10px 8px; height: 100%; box-sizing: border-box; border-radius: var(--border-radius-small); 
+            cursor: pointer; transition: all 0.2s ease; color: #fff; font-size: 0.8rem; font-weight: 500; 
+            overflow: hidden; display: flex; flex-direction: column; justify-content: space-around;
+        }
+        .course-block:hover { transform: scale(1.03); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); z-index: 10; }
+        .course-name { font-weight: 600; font-size: 0.9rem; margin-bottom: 4px; }
+        .course-location, .course-teacher { font-size: 0.8rem; opacity: 0.9; }
+        .course-block.out-of-week { opacity: 0.35; background-color: var(--color-time-bg) !important; color: var(--color-text-light) !important; border: 1px dashed var(--color-border); }
+        .course-block.out-of-week:hover { opacity: 1; transform: scale(1.03); box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); }
+        /* --- 课程冲突处理 --- */
+        .course-conflict-wrapper { display: flex; height: 100%; width: 100%; gap: 2px; }
+        .course-conflict-wrapper .course-block { flex: 1; min-width: 0; }
+        .course-conflict-wrapper .course-block:hover { transform: none; box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1); }
+        /* --- 模态框 (Modal) --- */
+        .modal-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0, 0, 0, 0.5); display: flex; align-items: center; justify-content: center; z-index: 1000; opacity: 0; visibility: hidden; transition: opacity 0.3s ease, visibility 0.3s ease; }
+        .modal-overlay.visible { opacity: 1; visibility: visible; }
+        .modal-content { background-color: rgba(255, 255, 255, 1); padding: 30px; border-radius: var(--border-radius); width: 90%; max-width: 450px; box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1); transform: scale(0.95); transition: transform 0.3s ease, background-color 0.3s ease; }
+        .modal-overlay.visible .modal-content { transform: scale(1); }
+        .modal-content h2 { margin-top: 0; color: var(--color-text); }
+        .modal-content p { font-size: 1.1rem; color: var(--color-text-light); margin: 15px 0; line-height: 1.6; }
+        .modal-content p strong { color: var(--color-text); min-width: 70px; display: inline-block; }
+        .modal-buttons { margin-top: 25px; display: flex; justify-content: flex-end; gap: 10px; }
+        .modal-btn { border: none; padding: 10px 20px; border-radius: var(--border-radius-small); font-size: 1rem; font-weight: 500; cursor: pointer; transition: background-color 0.2s ease, box-shadow 0.2s ease; }
+        .modal-btn-close { background-color: #f1f3f5; color: var(--color-text-light); }
+        .modal-btn-close:hover { background-color: #e9ecef; }
+        .modal-btn-delete { background-color: var(--color-danger); color: white; }
+        .modal-btn-delete:hover { background-color: #c92a2a; }
+        .modal-btn-submit { background-color: var(--color-accent); color: white; }
+        .modal-btn-submit:hover { background-color: #367ab3; }
+        #modal-btn-modify { background-color: var(--color-accent); color: white; }
+        #modal-btn-modify:hover { background-color: #367ab3; }
+        /* --- 添加/修改/设置 表单 --- */
+        #add-course-form, #edit-course-form, #bg-settings-form { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        #add-course-form .form-group, #edit-course-form .form-group, #bg-settings-form .form-group { display: flex; flex-direction: column; }
+        #add-course-form .full-width, #edit-course-form .full-width, #bg-settings-form .full-width { grid-column: 1 / -1; }
+        #add-course-form label, #edit-course-form label, #bg-settings-form label { font-weight: 500; margin-bottom: 5px; font-size: 0.9rem; }
+        #add-course-form input, #add-course-form select, #edit-course-form input, #edit-course-form select, #bg-settings-form input { width: 100%; padding: 10px; border: 1px solid var(--color-border); border-radius: var(--border-radius-small); box-sizing: border-box; font-size: 1rem; }
+        #bg-settings-form input[type="color"] { padding: 0; height: 40px; }
+        #bg-settings-form input[type="range"] { padding: 0; }
+        #add-course-form input:focus, #add-course-form select:focus, #edit-course-form input:focus, #edit-course-form select:focus, #bg-settings-form input:focus { outline: none; border-color: var(--color-accent); box-shadow: 0 0 0 3px rgba(66, 149, 214, 0.2); }
+    </style>
+</head>
+<body>
+
+    <div class="schedule-wrapper">
+        <div class="schedule-controls">
+            <div id="countdown-timer">正在计算下一堂课...</div>
+            <div class="week-setter">
+                <label for="current-week-input">当前周：</label>
+                <input type="number" id="current-week-input" value="1" min="1" max="25">
+            </div>
+            <div class="data-actions">
+                <button id="import-data-btn" class="modal-btn modal-btn-close">导入数据</button>
+                <button id="export-data-btn" class="modal-btn modal-btn-close">导出数据</button>
+            </div>
+            <div class="main-actions">
+                <button id="add-course-btn" class="modal-btn">添加课程</button>
+                <button id="bg-settings-btn" class="modal-btn" title="外观设置">⚙️</button>
+            </div>
+        </div>
+        <input type="file" id="import-file-input" style="display: none;" accept=".json">
+        <div id="schedule-container"></div>
+    </div>
+    <div id="course-details-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h2 id="modal-course-name">课程名称</h2>
+            <p><strong title="周数">周数:</strong> <span id="modal-course-weeks"></span></p>
+            <p><strong title="教师">教师:</strong> <span id="modal-course-teacher"></span></p>
+            <p><strong title="地点">地点:</strong> <span id="modal-course-location"></span></p>
+            <p><strong title="时间">时间:</strong> <span id="modal-course-time"></span></p>
+            <div class="modal-buttons">
+                <button id="modal-btn-modify" class="modal-btn">修改</button>
+                <button id="modal-btn-delete" class="modal-btn modal-btn-delete">删除课程</button>
+                <button id="modal-btn-close" class="modal-btn modal-btn-close">关闭</button>
+            </div>
+        </div>
+    </div>
+    <div id="add-course-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h2>添加新课程</h2>
+            <form id="add-course-form">
+                <div class="form-group full-width"><label for="form-name">课程名称</label><input type="text" id="form-name" required></div>
+                <div class="form-group full-width"><label for="form-location">上课地点</label><input type="text" id="form-location"></div>
+                <div class="form-group"><label for="form-teacher">任课教师</label><input type="text" id="form-teacher"></div>
+                <div class="form-group"><label for="form-weeks">周数 (例: 1-16)</label><input type="text" id="form-weeks" placeholder="例如: 1-16"></div>
+                <div class="form-group"><label for="form-day">星期几</label><select id="form-day" required><option value="1">星期一</option><option value="2">星期二</option><option value="3">星期三</option><option value="4">星期四</option><option value="5">星期五</option><option value="6">星期六</option><option value="7">星期日</option></select></div>
+                <div class="form-group"></div>
+                <div class="form-group"><label for="form-start-slot">开始节次</label><select id="form-start-slot" required></select></div>
+                <div class="form-group"><label for="form-end-slot">结束节次</label><select id="form-end-slot" required></select></div>
+                <div class="modal-buttons full-width"><button type="button" id="modal-btn-add-close" class="modal-btn modal-btn-close">取消</button><button type="submit" class="modal-btn modal-btn-submit">确认添加</button></div>
+            </form>
+        </div>
+    </div>
+    <div id="edit-course-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h2>修改课程信息</h2>
+            <form id="edit-course-form">
+                <div class="form-group full-width"><label for="edit-form-name">课程名称</label><input type="text" id="edit-form-name" required></div>
+                <div class="form-group full-width"><label for="edit-form-location">上课地点</label><input type="text" id="edit-form-location"></div>
+                <div class="form-group"><label for="edit-form-teacher">任课教师</label><input type="text" id="edit-form-teacher"></div>
+                <div class="form-group"><label for="edit-form-weeks">周数 (例: 1-16)</label><input type="text" id="edit-form-weeks" placeholder="例如: 1-16"></div>
+                <div class="form-group"><label for="edit-form-day">星期几</label><select id="edit-form-day" required><option value="1">星期一</option><option value="2">星期二</option><option value="3">星期三</option><option value="4">星期四</option><option value="5">星期五</option><option value="6">星期六</option><option value="7">星期日</option></select></div>
+                <div class="form-group"></div>
+                <div class="form-group"><label for="edit-form-start-slot">开始节次</label><select id="edit-form-start-slot" required></select></div>
+                <div class="form-group"><label for="edit-form-end-slot">结束节次</label><select id="edit-form-end-slot" required></select></div>
+                <div class="modal-buttons full-width"><button type="button" id="modal-btn-edit-close" class="modal-btn modal-btn-close">取消</button><button type="submit" class="modal-btn modal-btn-submit">保存更改</button></div>
+            </form>
+        </div>
+    </div>
+    <div id="bg-settings-modal" class="modal-overlay">
+        <div class="modal-content">
+            <h2>外观设置</h2>
+            <form id="bg-settings-form" onsubmit="return false;">
+                <div class="form-group">
+                    <label for="bg-color-input">背景颜色</label>
+                    <input type="color" id="bg-color-input">
+                </div>
+                <div class="form-group">
+                    <label for="table-opacity-slider">卡片不透明度</label>
+                    <input type="range" id="table-opacity-slider" min="0.5" max="1" step="0.05">
+                </div>
+                <div class="form-group full-width">
+                    <label for="bg-image-input">背景图片 URL (可选)</label>
+                    <input type="text" id="bg-image-input" placeholder="粘贴图片网址... https://...">
+                </div>
+                <div class="modal-buttons full-width">
+                    <button type="button" id="modal-btn-bg-reset" class="modal-btn modal-btn-delete">重置</button>
+                    <button type="button" id="modal-btn-bg-close" class="modal-btn modal-btn-close">完成</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+
+            // --- 1. 数据定义 [JS 已更新] ---
+            const timeSlots = [ { name: "第一节", time: "08:00-08:45" }, { name: "第二节", time: "08:50-09:35" }, { name: "第三节", time: "09:50-10:35" }, { name: "第四节", time: "10:40-11:25" }, { name: "第五节", time: "11:30-12:15" }, { name: "第六节", time: "14:00-14:45" }, { name: "第七节", time: "14:50-15:35" }, { name: "第八节", time: "15:50-16:35" }, { name: "第九节", time: "16:40-17:25" }, { name: "第十节", time: "17:30-18:15" }, { name: "第十一节", time: "19:00-19:45" }, { name: "第十二节", time: "19:50-20:35" } ];
+            const days = ["星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日"];
+            const courseColors = ["#f9b1b1", "#b1d8f9", "#b1f9d8", "#f9eab1", "#d8b1f9", "#f9b1e7", "#b1f9f8", "#f9d8b1", "#c0c0c0"];
+            let colorIndex = 0;
+            const colorMap = new Map();
+            function getCourseColor(courseName) { if (!colorMap.has(courseName)) { colorMap.set(courseName, courseColors[colorIndex % courseColors.length]); colorIndex++; } return { bg: colorMap.get(courseName), text: '#333' }; }
+            
+            // !! 修复: 恢复 V6 中被意外截断的完整默认课程 !!
+            const initialCoursesData = [
+                { id: "c1", name: "***", teacher: "***", location: "***", weeks: "1-8周", day: 1, startSlot: 6, endSlot: 7 }
+            ];
+
+            const defaultBgSettings = { color: '#f8f9fa', imageUrl: '', opacity: 0.95 };
+            let coursesData = [];
+            let currentWeek = 1;
+            let bgSettings = { ...defaultBgSettings }; 
+            let tempBgSettings = { ...defaultBgSettings };
+
+            // --- 2. 元素获取 [未更改] ---
+            // [此处省略所有 getElementById]
+            const scheduleWrapper = document.querySelector('.schedule-wrapper'); 
+            const scheduleControls = document.querySelector('.schedule-controls'); 
+            const allModalContents = document.querySelectorAll('.modal-content'); 
+            const container = document.getElementById('schedule-container');
+            const countdownTimer = document.getElementById('countdown-timer');
+            const currentWeekInput = document.getElementById('current-week-input'); 
+            const detailsModal = document.getElementById('course-details-modal');
+            const modalCourseName = document.getElementById('modal-course-name');
+            const modalCourseWeeks = document.getElementById('modal-course-weeks');
+            const modalCourseTeacher = document.getElementById('modal-course-teacher');
+            const modalCourseLocation = document.getElementById('modal-course-location');
+            const modalCourseTime = document.getElementById('modal-course-time');
+            const modifyBtn = document.getElementById('modal-btn-modify'); 
+            const deleteBtn = document.getElementById('modal-btn-delete');
+            const closeBtn = document.getElementById('modal-btn-close');
+            const addModal = document.getElementById('add-course-modal');
+            const addBtn = document.getElementById('add-course-btn');
+            const addForm = document.getElementById('add-course-form');
+            const addFormStartSlot = document.getElementById('form-start-slot');
+            const addFormEndSlot = document.getElementById('form-end-slot');
+            const addCloseBtn = document.getElementById('modal-btn-add-close');
+            const editModal = document.getElementById('edit-course-modal');
+            const editForm = document.getElementById('edit-course-form');
+            const editFormStartSlot = document.getElementById('edit-form-start-slot');
+            const editFormEndSlot = document.getElementById('edit-form-end-slot');
+            const editCloseBtn = document.getElementById('modal-btn-edit-close');
+            const exportBtn = document.getElementById('export-data-btn');
+            const importBtn = document.getElementById('import-data-btn');
+            const importFileInput = document.getElementById('import-file-input');
+            const bgSettingsBtn = document.getElementById('bg-settings-btn');
+            const bgSettingsModal = document.getElementById('bg-settings-modal');
+            const bgColorInput = document.getElementById('bg-color-input');
+            const bgImageInput = document.getElementById('bg-image-input');
+            const tableOpacitySlider = document.getElementById('table-opacity-slider');
+            const bgResetBtn = document.getElementById('modal-btn-bg-reset');
+            const bgCloseBtn = document.getElementById('modal-btn-bg-close');
+            let currentEditingCourse = null; 
+
+            // --- 3. 本地存储 (localStorage) 功能 [未更改] ---
+            // [此处省略 saveCourses, loadCourses, saveCurrentWeek, loadCurrentWeek, saveBackgroundSettings, loadBackgroundSettings, applyBackgroundSettings]
+            function saveCourses() { localStorage.setItem('myCourses', JSON.stringify(coursesData)); }
+            function loadCourses() { const savedCourses = localStorage.getItem('myCourses'); if (savedCourses) { coursesData = JSON.parse(savedCourses); } else { coursesData = initialCoursesData; } }
+            function saveCurrentWeek() { localStorage.setItem('currentWeek', currentWeek); }
+            function loadCurrentWeek() { const savedWeek = localStorage.getItem('currentWeek'); if (savedWeek) { currentWeek = parseInt(savedWeek); } currentWeekInput.value = currentWeek; }
+            function saveBackgroundSettings() { localStorage.setItem('myBgSettings', JSON.stringify(bgSettings)); }
+            function loadBackgroundSettings() { const savedSettings = localStorage.getItem('myBgSettings'); if (savedSettings) { bgSettings = JSON.parse(savedSettings); } else { bgSettings = { ...defaultBgSettings }; } }
+            function applyBackgroundSettings() { const { color, imageUrl, opacity } = bgSettings; document.body.style.backgroundColor = color; document.body.style.backgroundImage = imageUrl ? `url(${imageUrl})` : 'none'; const cardBgColor = `rgba(255, 255, 255, ${opacity})`; const controlsBgColor = `rgba(255, 255, 255, ${Math.max(0.7, opacity - 0.2)})`; scheduleWrapper.style.backgroundColor = cardBgColor; scheduleControls.style.backgroundColor = controlsBgColor; allModalContents.forEach(modal => { modal.style.backgroundColor = cardBgColor; }); }
+            
+            // --- 4. 周数解析功能 [未更改] ---
+            // [函数 isCourseInCurrentWeek 未更改，此处省略]
+            function isCourseInCurrentWeek(weekString, checkWeek) { if (!weekString) return true; const weekParts = weekString.replace(/周/g, '').split(','); for (const part of weekParts) { let partToParse = part.trim(); let isSingleWeek = false, isDoubleWeek = false; if (partToParse.includes('(单)')) { isSingleWeek = true; partToParse = partToParse.replace('(单)', ''); } if (partToParse.includes('(双)')) { isDoubleWeek = true; partToParse = partToParse.replace('(双)', ''); } let inRange = false; const rangeMatch = partToParse.match(/^(\d+)-(\d+)$/); if (rangeMatch) { const start = parseInt(rangeMatch[1]), end = parseInt(rangeMatch[2]); if (checkWeek >= start && checkWeek <= end) { inRange = true; } } else { const singleMatch = partToParse.match(/^(\d+)$/); if (singleMatch) { if (checkWeek === parseInt(singleMatch[1])) { inRange = true; } } } if (inRange) { if (isSingleWeek && checkWeek % 2 === 0) continue; if (isDoubleWeek && checkWeek % 2 !== 0) continue; return true; } } return false; }
+
+            
+            // --- 5. 核心功能：渲染课程表 [JS V7 已更新] ---
+
+            // (辅助函数：检查两个课程列表是否相同)
+            function areCourseListsEqual(listA, listB) {
+                if (listA.length !== listB.length) return false;
+                const idsA = listA.map(c => c.id).sort();
+                const idsB = listB.map(c => c.id).sort();
+                return idsA.every((id, index) => id === idsB[index]);
+            }
+
+            function renderSchedule() {
+                colorMap.clear(); colorIndex = 0;
+
+                let table = '<table class="schedule-table"><thead><tr><th>时间</th>';
+                days.forEach(day => { table += `<th>${day}</th>`; });
+                table += '</tr></thead><tbody>';
+
+                // 1. (网格初始化)
+                // grid[day][slot] 将包含一个 *数组*，内含所有在 (day, slot) 发生的课程
+                let grid = Array(days.length).fill(null).map(() => 
+                    Array(timeSlots.length).fill(null).map(() => [])
+                );
+                
+                // 2. (填充网格)
+                coursesData.forEach(course => {
+                    const dayIndex = course.day - 1;
+                    const start = course.startSlot - 1;
+                    const end = course.endSlot - 1;
+
+                    if (dayIndex < 0 || dayIndex >= days.length || start < 0 || end >= timeSlots.length) {
+                        console.warn('课程数据无效 (超出范围): ', course);
+                        return;
+                    }
+
+                    // 填充所有占用的格子
+                    for (let i = start; i <= end; i++) {
+                        grid[dayIndex][i].push(course);
+                    }
+                });
+
+                // 3. (生成 HTML)
+                for (let i = 0; i < timeSlots.length; i++) { // 遍历行 (节次)
+                    table += '<tr>';
+                    // 时间列
+                    table += `<th>${timeSlots[i].name}<div>${timeSlots[i].time}</div></th>`;
+                    
+                    for (let j = 0; j < days.length; j++) { // 遍历列 (星期)
+                        
+                        const currentCellCourses = grid[j][i];
+                        
+                        // 检查是否应被 rowspan 覆盖
+                        if (i > 0) {
+                            const cellAboveCourses = grid[j][i - 1];
+                            if (areCourseListsEqual(currentCellCourses, cellAboveCourses)) {
+                                // 课程与上一个格子相同，说明此格已被 rowspan，跳过
+                                continue;
+                            }
+                        }
+
+                        // (如果没被跳过，说明这是一个新块的开始)
+                        
+                        // 计算 rowspan
+                        let span = 1;
+                        for (let k = i + 1; k < timeSlots.length; k++) {
+                            const cellBelowCourses = grid[j][k];
+                            if (areCourseListsEqual(currentCellCourses, cellBelowCourses)) {
+                                span++;
+                            } else {
+                                break;
+                            }
+                        }
+
+                        // 生成 <td>
+                        if (currentCellCourses.length === 0) {
+                            // 空白格
+                            table += `<td rowspan="${span}"></td>`;
+                        } else {
+                            // 有课的格子
+                            table += `<td rowspan="${span}">`;
+                            table += `<div class="course-conflict-wrapper">`;
+                            
+                            // 循环数组中的所有课程
+                            currentCellCourses.forEach(course => {
+                                const colors = getCourseColor(course.name);
+                                const inWeek = isCourseInCurrentWeek(course.weeks, currentWeek);
+                                const extraClass = inWeek ? '' : 'out-of-week';
+
+                                table += `<div class="course-block ${extraClass}"
+                                         style="background-color: ${colors.bg}; color: ${colors.text};"
+                                         data-id="${course.id}"
+                                         data-name="${course.name}"
+                                         data-teacher="${course.teacher || ''}"
+                                         data-location="${course.location || ''}"
+                                         data-weeks="${course.weeks || ''}"
+                                         data-time="周${course.day}, ${timeSlots[course.startSlot-1].time} - ${timeSlots[course.endSlot-1].time.split('-')[1]}">
+                                        <div class="course-name">${course.name}</div>
+                                        <div class="course-teacher">${course.teacher || ''}</div>
+                                        <div class="course-location">${course.location || ''}</div>
+                                    </div>`;
+                            });
+
+                            table += `</div></td>`; // 关闭 wrapper 和 td
+                        }
+                    }
+                    table += '</tr>';
+                }
+
+                table += '</tbody></table>';
+                container.innerHTML = table;
+
+                // 重新绑定点击事件
+                attachCourseClickListeners();
+            }
+
+            // --- 6. 交互功能 [未更改] ---
+            // [此处省略 6.1 - 6.13 (增删改查/导入导出/外观设置) 的所有 JS]
+            function attachCourseClickListeners() { container.querySelectorAll('.course-block').forEach(block => { block.addEventListener('click', (e) => { const data = e.currentTarget.dataset; currentEditingCourse = coursesData.find(c => c.id === data.id); if (!currentEditingCourse) return; modalCourseName.textContent = currentEditingCourse.name; modalCourseWeeks.textContent = currentEditingCourse.weeks; modalCourseTeacher.textContent = currentEditingCourse.teacher; modalCourseLocation.textContent = currentEditingCourse.location; modalCourseTime.textContent = data.time; detailsModal.classList.add('visible'); }); }); }
+            closeBtn.addEventListener('click', () => { detailsModal.classList.remove('visible'); currentEditingCourse = null; });
+            deleteBtn.addEventListener('click', () => { if (currentEditingCourse) { coursesData = coursesData.filter(course => course.id !== currentEditingCourse.id); saveCourses(); renderSchedule(); updateCountdown(); detailsModal.classList.remove('visible'); currentEditingCourse = null; } });
+            addBtn.addEventListener('click', () => { addForm.reset(); addModal.classList.add('visible'); });
+            addCloseBtn.addEventListener('click', () => { addModal.classList.remove('visible'); });
+            addForm.addEventListener('submit', (e) => { e.preventDefault(); const newCourse = { id: `c${Date.now()}`, name: document.getElementById('form-name').value, teacher: document.getElementById('form-teacher').value, location: document.getElementById('form-location').value, weeks: document.getElementById('form-weeks').value, day: parseInt(document.getElementById('form-day').value), startSlot: parseInt(document.getElementById('form-start-slot').value), endSlot: parseInt(document.getElementById('form-end-slot').value), }; if (newCourse.endSlot < newCourse.startSlot) { alert("结束节次不能早于开始节次！"); return; } coursesData.push(newCourse); saveCourses(); renderSchedule(); updateCountdown(); addModal.classList.remove('visible'); });
+            currentWeekInput.addEventListener('change', () => { const newWeek = parseInt(currentWeekInput.value); if (newWeek > 0) { currentWeek = newWeek; saveCurrentWeek(); renderSchedule(); updateCountdown(); } });
+            modifyBtn.addEventListener('click', () => { if (!currentEditingCourse) return; document.getElementById('edit-form-name').value = currentEditingCourse.name; document.getElementById('edit-form-location').value = currentEditingCourse.location; document.getElementById('edit-form-teacher').value = currentEditingCourse.teacher; document.getElementById('edit-form-weeks').value = currentEditingCourse.weeks; document.getElementById('edit-form-day').value = currentEditingCourse.day; document.getElementById('edit-form-start-slot').value = currentEditingCourse.startSlot; document.getElementById('edit-form-end-slot').value = currentEditingCourse.endSlot; detailsModal.classList.remove('visible'); editModal.classList.add('visible'); });
+            editCloseBtn.addEventListener('click', () => { editModal.classList.remove('visible'); currentEditingCourse = null; });
+            editForm.addEventListener('submit', (e) => { e.preventDefault(); if (!currentEditingCourse) return; const courseIndex = coursesData.findIndex(c => c.id === currentEditingCourse.id); if (courseIndex === -1) { alert("错误：未找到课程！"); return; } const updatedCourse = { id: currentEditingCourse.id, name: document.getElementById('edit-form-name').value, teacher: document.getElementById('edit-form-teacher').value, location: document.getElementById('edit-form-location').value, weeks: document.getElementById('edit-form-weeks').value, day: parseInt(document.getElementById('edit-form-day').value), startSlot: parseInt(document.getElementById('edit-form-start-slot').value), endSlot: parseInt(document.getElementById('edit-form-end-slot').value), }; if (updatedCourse.endSlot < updatedCourse.startSlot) { alert("结束节次不能早于开始节次！"); return; } coursesData[courseIndex] = updatedCourse; saveCourses(); renderSchedule(); updateCountdown(); editModal.classList.remove('visible'); currentEditingCourse = null; });
+            exportBtn.addEventListener('click', () => { const backupData = { courses: coursesData, week: currentWeek, settings: bgSettings }; const jsonString = JSON.stringify(backupData, null, 2); const blob = new Blob([jsonString], { type: 'application/json' }); const url = URL.createObjectURL(blob); const a = document.createElement('a'); const date = new Date(); const dateString = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`; a.download = `my_schedule_backup_${dateString}.json`; a.href = url; document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url); });
+            importBtn.addEventListener('click', () => { importFileInput.click(); });
+            importFileInput.addEventListener('change', (event) => { const file = event.target.files[0]; if (!file) { return; } const reader = new FileReader(); reader.onload = (e) => { try { const jsonString = e.target.result; const importedData = JSON.parse(jsonString); if (importedData && Array.isArray(importedData.courses) && typeof importedData.week === 'number') { coursesData = importedData.courses; currentWeek = importedData.week; currentWeekInput.value = currentWeek; if (importedData.settings) { bgSettings = importedData.settings; } else { bgSettings = { ...defaultBgSettings }; } saveCourses(); saveCurrentWeek(); saveBackgroundSettings(); applyBackgroundSettings(); renderSchedule(); updateCountdown(); alert('课程表导入成功！'); } else { alert('导入失败：文件格式不正确。'); } } catch (error) { alert('导入失败：文件已损坏或非JSON格式。\n' + error.message); } event.target.value = null; }; reader.readAsText(file); });
+            bgSettingsBtn.addEventListener('click', () => { tempBgSettings = { ...bgSettings }; bgColorInput.value = bgSettings.color; bgImageInput.value = bgSettings.imageUrl; tableOpacitySlider.value = bgSettings.opacity; bgSettingsModal.classList.add('visible'); });
+            bgColorInput.addEventListener('input', () => { bgSettings.color = bgColorInput.value; applyBackgroundSettings(); });
+            bgImageInput.addEventListener('input', () => { bgSettings.imageUrl = bgImageInput.value; applyBackgroundSettings(); });
+            tableOpacitySlider.addEventListener('input', () => { bgSettings.opacity = tableOpacitySlider.value; applyBackgroundSettings(); });
+            bgCloseBtn.addEventListener('click', () => { saveBackgroundSettings(); bgSettingsModal.classList.remove('visible'); });
+            bgResetBtn.addEventListener('click', () => { if (confirm('确定要重置为默认外观吗？')) { bgSettings = { ...defaultBgSettings }; applyBackgroundSettings(); bgColorInput.value = bgSettings.color; bgImageInput.value = bgSettings.imageUrl; tableOpacitySlider.value = bgSettings.opacity; } });
+
+            // --- 7. 倒计时功能 [未更改] ---
+            // [函数 updateCountdown 未更改，此处省略]
+            function updateCountdown() { const now = new Date(); const currentDay = now.getDay() === 0 ? 7 : now.getDay(); const currentTime = now.getHours() * 60 + now.getMinutes(); const coursesThisWeek = coursesData.filter(course => isCourseInCurrentWeek(course.weeks, currentWeek)); let nextCourseTime = null, nextCourseName = null; const allCourseStartTimes = []; coursesThisWeek.forEach(course => { const [startHour, startMinute] = timeSlots[course.startSlot - 1].time.split('-')[0].split(':'); const courseStartTimeMinutes = parseInt(startHour) * 60 + parseInt(startMinute); const minutesFromWeekStart = (course.day - 1) * 24 * 60 + courseStartTimeMinutes; allCourseStartTimes.push({ minutes: minutesFromWeekStart, name: course.name }); }); allCourseStartTimes.sort((a, b) => a.minutes - b.minutes); const currentMinutesFromWeekStart = (currentDay - 1) * 24 * 60 + currentTime; let nextCourse = allCourseStartTimes.find(course => course.minutes > currentMinutesFromWeekStart); if (nextCourse) { const diffInMinutes = nextCourse.minutes - currentMinutesFromWeekStart; const totalSeconds = diffInMinutes * 60 - now.getSeconds(); const days = Math.floor(totalSeconds / (3600 * 24)); const hours = Math.floor((totalSeconds % (3600 * 24)) / 3600); const minutes = Math.floor((totalSeconds % 3600) / 60); const seconds = Math.floor(totalSeconds % 60); let countdownText = `距离 ${nextCourse.name} 还有: `; if (days > 0) countdownText += `${days}天 `; countdownText += `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`; countdownTimer.textContent = countdownText; } else { countdownTimer.textContent = "本周课程已结束"; } }
+
+            // --- 8. 初始化 [未更改] ---
+            function initialize() {
+                // 填充 "添加" 和 "修改" 两个表单的节次下拉框
+                timeSlots.forEach((slot, index) => {
+                    const option1 = new Option(`${slot.name} (${slot.time.split('-')[0]})`, index + 1);
+                    const option2 = new Option(`${slot.name} (${slot.time.split('-')[1]})`, index + 1);
+                    const option3 = new Option(`${slot.name} (${slot.time.split('-')[0]})`, index + 1); 
+                    const option4 = new Option(`${slot.name} (${slot.time.split('-')[1]})`, index + 1); 
+                    addFormStartSlot.add(option1); addFormEndSlot.add(option2);
+                    editFormStartSlot.add(option3); editFormEndSlot.add(option4);
+                });
+                if(addFormEndSlot.options.length > 0) {
+                     addFormEndSlot.selectedIndex = addFormEndSlot.options.length - 1;
+                     editFormEndSlot.selectedIndex = editFormEndSlot.options.length - 1;
+                }
+
+                loadBackgroundSettings(); 
+                applyBackgroundSettings();
+                loadCourses();
+                loadCurrentWeek();
+                
+                renderSchedule();
+                
+                updateCountdown();
+                setInterval(updateCountdown, 1000);
+            }
+
+            initialize();
+        });
+    </script>
+
+</body>
+</html>
